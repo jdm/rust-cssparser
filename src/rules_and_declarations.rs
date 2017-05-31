@@ -206,7 +206,7 @@ pub struct DeclarationListParser<'i: 't, 't: 'a, 'a, P> {
 }
 
 
-impl<'i, 't, 'a, I, P, E> DeclarationListParser<'i, 't, 'a, P>
+impl<'i: 't, 't: 'a, 'a, I, P, E> DeclarationListParser<'i, 't, 'a, P>
 where P: DeclarationParser<Declaration = I, Error = E> + AtRuleParser<AtRule = I, Error = E> {
     /// Create a new `DeclarationListParser` for the given `input` and `parser`.
     ///
@@ -232,7 +232,7 @@ where P: DeclarationParser<Declaration = I, Error = E> + AtRuleParser<AtRule = I
 
 /// `DeclarationListParser` is an iterator that yields `Ok(_)` for a valid declaration or at-rule
 /// or `Err(())` for an invalid one.
-impl<'i, 't, 'a, I, P, E: 'i> Iterator for DeclarationListParser<'i, 't, 'a, P>
+impl<'i: 't, 't: 'a, 'a, I, P, E: 'i> Iterator for DeclarationListParser<'i, 't, 'a, P>
 where P: DeclarationParser<Declaration = I, Error = E> + AtRuleParser<AtRule = I, Error = E> {
     type Item = Result<I, PreciseParseError<'i, E>>;
 
@@ -324,7 +324,7 @@ where P: QualifiedRuleParser<QualifiedRule = R, Error = E> + AtRuleParser<AtRule
 
 
 /// `RuleListParser` is an iterator that yields `Ok(_)` for a rule or `Err(())` for an invalid one.
-impl<'i, 't, 'a, R, P, E: 'i> Iterator for RuleListParser<'i, 't, 'a, P>
+impl<'i: 't, 't: 'a, 'a, R, P, E: 'i> Iterator for RuleListParser<'i, 't, 'a, P>
 where P: QualifiedRuleParser<QualifiedRule = R, Error = E> + AtRuleParser<AtRule = R, Error = E> {
     type Item = Result<R, PreciseParseError<'i, E>>;
 
