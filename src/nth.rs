@@ -4,14 +4,14 @@
 
 use std::ascii::AsciiExt;
 
-use super::{Token, Parser, BasicParseError};
+use super::{Token, Parser, BasicParseError, ErrorComponent};
 
 
 /// Parse the *An+B* notation, as found in the `:nth-child()` selector.
 /// The input is typically the arguments of a function,
 /// in which case the caller needs to check if the arguments’ parser is exhausted.
 /// Return `Ok((A, B))`, or `Err(())` for a syntax error.
-pub fn parse_nth<'i, 't>(input: &mut Parser<'i, 't>) -> Result<(i32, i32), BasicParseError<'i>> {
+pub fn parse_nth<'i, 't>(input: &mut Parser<'i, 't>) -> Result<(i32, i32), BasicParseError> {
     let token = input.next()?;
     match token {
         Token::Number { int_value: Some(b), .. } => {
@@ -50,14 +50,20 @@ pub fn parse_nth<'i, 't>(input: &mut Parser<'i, 't>) -> Result<(i32, i32), Basic
                     _ => parse_n_dash_digits(&*value).map(|v| (1, v))
                 }
             }
-            t => return Err(BasicParseError::UnexpectedToken(t)),
+            t => {
+                input.mark_error(Some(ErrorComponent::Token(t)));
+                return Err(BasicParseError::UnexpectedToken)
+            }
         },
         _ => Err(()),
-    }.map_err(|()| BasicParseError::UnexpectedToken(token))
+    }.map_err(|()| {
+        input.mark_error(Some(ErrorComponent::Token(token)));
+        BasicParseError::UnexpectedToken
+    })
 }
 
 
-fn parse_b<'i, 't>(input: &mut Parser<'i, 't>, a: i32) -> Result<(i32, i32), BasicParseError<'i>> {
+fn parse_b<'i, 't>(input: &mut Parser<'i, 't>, a: i32) -> Result<(i32, i32), BasicParseError> {
     let start_position = input.position();
     let token = input.next();
     match token {
@@ -68,15 +74,18 @@ fn parse_b<'i, 't>(input: &mut Parser<'i, 't>, a: i32) -> Result<(i32, i32), Bas
             input.reset(start_position);
             Ok((a, 0))
         }
-    }.map_err(|()| BasicParseError::UnexpectedToken(token.unwrap()))
+    }
 }
 
-fn parse_signless_b<'i, 't>(input: &mut Parser<'i, 't>, a: i32, b_sign: i32) -> Result<(i32, i32), BasicParseError<'i>> {
+fn parse_signless_b<'i, 't>(input: &mut Parser<'i, 't>, a: i32, b_sign: i32) -> Result<(i32, i32), BasicParseError> {
     let token = input.next()?;
     match token {
         Token::Number { has_sign: false, int_value: Some(b), .. } => Ok((a, b_sign * b)),
         _ => Err(())
-    }.map_err(|()| BasicParseError::UnexpectedToken(token))
+    }.map_err(|()| {
+        input.mark_error(Some(ErrorComponent::Token(token)));
+        BasicParseError::UnexpectedToken
+    })
 }
 
 fn parse_n_dash_digits(string: &str) -> Result<i32, ()> {

@@ -4,7 +4,7 @@
 
 //! https://drafts.csswg.org/css-syntax/#urange
 
-use {Parser, ToCss, BasicParseError};
+use {Parser, ToCss, BasicParseError, ErrorComponent};
 use std::char;
 use std::cmp;
 use std::fmt;
@@ -24,7 +24,7 @@ pub struct UnicodeRange {
 
 impl UnicodeRange {
     /// https://drafts.csswg.org/css-syntax/#urange-syntax
-    pub fn parse<'i, 't>(input: &mut Parser<'i, 't>) -> Result<Self, BasicParseError<'i>> {
+    pub fn parse<'i, 't>(input: &mut Parser<'i, 't>) -> Result<Self, BasicParseError> {
         // <urange> =
         //   u '+' <ident-token> '?'* |
         //   u <dimension-token> '?'* |
@@ -44,23 +44,30 @@ impl UnicodeRange {
 
         let range = match parse_concatenated(concatenated_tokens.as_bytes()) {
             Ok(range) => range,
-            Err(()) => return Err(BasicParseError::UnexpectedToken(Token::Ident(concatenated_tokens.into()))),
+            Err(()) => {
+                input.mark_error(Some(ErrorComponent::Token(Token::Ident(concatenated_tokens.into()))));
+                return Err(BasicParseError::UnexpectedToken);
+            }
         };
         if range.end > char::MAX as u32 || range.start > range.end {
-            Err(BasicParseError::UnexpectedToken(Token::Ident(concatenated_tokens.into())))
+            input.mark_error(Some(ErrorComponent::Token(Token::Ident(concatenated_tokens.into()))));
+            Err(BasicParseError::UnexpectedToken)
         } else {
             Ok(range)
         }
     }
 }
 
-fn parse_tokens<'i, 't>(input: &mut Parser<'i, 't>) -> Result<(), BasicParseError<'i>> {
+fn parse_tokens<'i, 't>(input: &mut Parser<'i, 't>) -> Result<(), BasicParseError> {
     match input.next_including_whitespace()? {
         Token::Delim('+') => {
             match input.next_including_whitespace()? {
                 Token::Ident(_) => {}
                 Token::Delim('?') => {}
-                t => return Err(BasicParseError::UnexpectedToken(t))
+                t => {
+                    input.mark_error(Some(ErrorComponent::Token(t)));
+                    return Err(BasicParseError::UnexpectedToken)
+                }
             }
             parse_question_marks(input)
         }
@@ -76,7 +83,10 @@ fn parse_tokens<'i, 't>(input: &mut Parser<'i, 't>) -> Result<(), BasicParseErro
                 _ => input.reset(after_number)
             }
         }
-        t => return Err(BasicParseError::UnexpectedToken(t))
+        t => {
+            input.mark_error(Some(ErrorComponent::Token(t)));
+            return Err(BasicParseError::UnexpectedToken)
+        }
     }
     Ok(())
 }

@@ -294,7 +294,7 @@ fn unquoted_url_escaping() {
 
 #[test]
 fn test_expect_url() {
-    fn parse<'a>(s: &mut ParserInput<'a>) -> Result<CompactCowStr<'a>, BasicParseError<'a>> {
+    fn parse<'a>(s: &mut ParserInput<'a>) -> Result<CompactCowStr<'a>, BasicParseError> {
         Parser::new(s).expect_url()
     }
     let mut input = ParserInput::new("url()");
@@ -679,7 +679,7 @@ impl<'i> DeclarationParser<'i> for JsonParser {
     type Error = ();
 
     fn parse_value<'t>(&mut self, name: CompactCowStr<'i>, input: &mut Parser<'i, 't>)
-                       -> Result<Json, ParseError<'i, ()>> {
+                       -> Result<Json, ParseError<()>> {
         let mut value = vec![];
         let mut important = false;
         loop {
@@ -720,7 +720,7 @@ impl<'i> AtRuleParser<'i> for JsonParser {
     type Error = ();
 
     fn parse_prelude<'t>(&mut self, name: CompactCowStr<'i>, input: &mut Parser<'i, 't>)
-                         -> Result<AtRuleType<Vec<Json>, Json>, ParseError<'i, ()>> {
+                         -> Result<AtRuleType<Vec<Json>, Json>, ParseError<()>> {
         Ok(AtRuleType::OptionalBlock(vec![
             "at-rule".to_json(),
             name.to_json(),
@@ -729,7 +729,7 @@ impl<'i> AtRuleParser<'i> for JsonParser {
     }
 
     fn parse_block<'t>(&mut self, mut prelude: Vec<Json>, input: &mut Parser<'i, 't>)
-                       -> Result<Json, ParseError<'i, ()>> {
+                       -> Result<Json, ParseError<()>> {
         prelude.push(Json::Array(component_values_to_json(input)));
         Ok(Json::Array(prelude))
     }
@@ -745,12 +745,12 @@ impl<'i> QualifiedRuleParser<'i> for JsonParser {
     type QualifiedRule = Json;
     type Error = ();
 
-    fn parse_prelude<'t>(&mut self, input: &mut Parser<'i, 't>) -> Result<Vec<Json>, ParseError<'i, ()>> {
+    fn parse_prelude<'t>(&mut self, input: &mut Parser<'i, 't>) -> Result<Vec<Json>, ParseError<()>> {
         Ok(component_values_to_json(input))
     }
 
     fn parse_block<'t>(&mut self, prelude: Vec<Json>, input: &mut Parser<'i, 't>)
-                       -> Result<Json, ParseError<'i, ()>> {
+                       -> Result<Json, ParseError<()>> {
         Ok(JArray![
             "qualified rule",
             prelude,

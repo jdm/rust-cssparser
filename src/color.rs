@@ -5,7 +5,7 @@
 use std::fmt;
 use std::f32::consts::PI;
 
-use super::{Token, Parser, ToCss, ParseError, BasicParseError};
+use super::{Token, Parser, ToCss, ParseError, BasicParseError, ErrorComponent};
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -140,7 +140,7 @@ impl Color {
     /// Parse a <color> value, per CSS Color Module Level 3.
     ///
     /// FIXME(#2) Deprecated CSS2 System Colors are not supported yet.
-    pub fn parse<'i, 't>(input: &mut Parser<'i, 't>) -> Result<Color, BasicParseError<'i>> {
+    pub fn parse<'i, 't>(input: &mut Parser<'i, 't>) -> Result<Color, BasicParseError> {
         let token = input.next()?;
         match token {
             Token::Hash(ref value) | Token::IDHash(ref value) => {
@@ -154,7 +154,10 @@ impl Color {
                 }).map_err(ParseError::<()>::basic);
             }
             _ => Err(())
-        }.map_err(|()| BasicParseError::UnexpectedToken(token))
+        }.map_err(|()| {
+            input.mark_error(Some(ErrorComponent::Token(token)));
+            BasicParseError::UnexpectedToken
+        })
     }
 
     /// Parse a color hash, without the leading '#' character.
@@ -411,11 +414,14 @@ fn clamp_floor_256_f32(val: f32) -> u8 {
 }
 
 #[inline]
-fn parse_color_function<'i, 't>(name: &str, arguments: &mut Parser<'i, 't>) -> Result<Color, BasicParseError<'i>> {
+fn parse_color_function<'i, 't>(name: &str, arguments: &mut Parser<'i, 't>) -> Result<Color, BasicParseError> {
     let (red, green, blue, uses_commas) = match_ignore_ascii_case! { name,
         "rgb" | "rgba" => parse_rgb_components_rgb(arguments)?,
         "hsl" | "hsla" => parse_rgb_components_hsl(arguments)?,
-        _ => return Err(BasicParseError::UnexpectedToken(Token::Ident(name.to_owned().into()))),
+        _ => {
+            arguments.mark_error(Some(ErrorComponent::Token(Token::Ident(name.to_owned().into()))));
+            return Err(BasicParseError::UnexpectedToken);
+        }
     };
 
     let alpha = if !arguments.is_exhausted() {
@@ -424,7 +430,10 @@ fn parse_color_function<'i, 't>(name: &str, arguments: &mut Parser<'i, 't>) -> R
         } else {
             match arguments.next()? {
                 Token::Delim('/') => {},
-                t => return Err(BasicParseError::UnexpectedToken(t)),
+                t => {
+                    arguments.mark_error(Some(ErrorComponent::Token(t)));
+                    return Err(BasicParseError::UnexpectedToken);
+                }
             };
         };
         let token = arguments.next()?;
@@ -436,7 +445,8 @@ fn parse_color_function<'i, 't>(name: &str, arguments: &mut Parser<'i, 't>) -> R
                 clamp_unit_f32(v)
             }
             t => {
-                return Err(BasicParseError::UnexpectedToken(t))
+                arguments.mark_error(Some(ErrorComponent::Token(t)));
+                return Err(BasicParseError::UnexpectedToken)
             }
         }
     } else {
@@ -449,7 +459,7 @@ fn parse_color_function<'i, 't>(name: &str, arguments: &mut Parser<'i, 't>) -> R
 
 
 #[inline]
-fn parse_rgb_components_rgb<'i, 't>(arguments: &mut Parser<'i, 't>) -> Result<(u8, u8, u8, bool), BasicParseError<'i>> {
+fn parse_rgb_components_rgb<'i, 't>(arguments: &mut Parser<'i, 't>) -> Result<(u8, u8, u8, bool), BasicParseError> {
     let red: u8;
     let green: u8;
     let blue: u8;
@@ -466,7 +476,10 @@ fn parse_rgb_components_rgb<'i, 't>(arguments: &mut Parser<'i, 't>) -> Result<(u
                     uses_commas = true;
                     arguments.expect_number()?
                 }
-                t => return Err(BasicParseError::UnexpectedToken(t))
+                t => {
+                    arguments.mark_error(Some(ErrorComponent::Token(t)));
+                    return Err(BasicParseError::UnexpectedToken);
+                }
             });
             if uses_commas {
                 arguments.expect_comma()?;
@@ -481,20 +494,26 @@ fn parse_rgb_components_rgb<'i, 't>(arguments: &mut Parser<'i, 't>) -> Result<(u
                     uses_commas = true;
                     arguments.expect_percentage()?
                 }
-                t => return Err(BasicParseError::UnexpectedToken(t))
+                t => {
+                    arguments.mark_error(Some(ErrorComponent::Token(t)));
+                    return Err(BasicParseError::UnexpectedToken);
+                }
             });
             if uses_commas {
                 arguments.expect_comma()?;
             }
             blue = clamp_unit_f32(arguments.expect_percentage()?);
         }
-        t => return Err(BasicParseError::UnexpectedToken(t))
+        t => {
+            arguments.mark_error(Some(ErrorComponent::Token(t)));
+            return Err(BasicParseError::UnexpectedToken);
+        }
     };
     return Ok((red, green, blue, uses_commas));
 }
 
 #[inline]
-fn parse_rgb_components_hsl<'i, 't>(arguments: &mut Parser<'i, 't>) -> Result<(u8, u8, u8, bool), BasicParseError<'i>> {
+fn parse_rgb_components_hsl<'i, 't>(arguments: &mut Parser<'i, 't>) -> Result<(u8, u8, u8, bool), BasicParseError> {
     let mut uses_commas = false;
     // Hue given as an angle
     // https://drafts.csswg.org/css-values/#angles
@@ -510,9 +529,15 @@ fn parse_rgb_components_hsl<'i, 't>(arguments: &mut Parser<'i, 't>) -> Result<(u
                 _ => Err(()),
             }
         }
-        t => return Err(BasicParseError::UnexpectedToken(t))
+        t => {
+            arguments.mark_error(Some(ErrorComponent::Token(t)));
+            return Err(BasicParseError::UnexpectedToken)
+        }
     };
-    let hue_degrees = hue_degrees.map_err(|()| BasicParseError::UnexpectedToken(token))?;
+    let hue_degrees = hue_degrees.map_err(|()| {
+        arguments.mark_error(Some(ErrorComponent::Token(token)));
+        BasicParseError::UnexpectedToken
+    })?;
     // Subtract an integer before rounding, to avoid some rounding errors:
     let hue_normalized_degrees = hue_degrees - 360. * (hue_degrees / 360.).floor();
     let hue = hue_normalized_degrees / 360.;
@@ -525,7 +550,10 @@ fn parse_rgb_components_hsl<'i, 't>(arguments: &mut Parser<'i, 't>) -> Result<(u
             uses_commas = true;
             arguments.expect_percentage()?
         }
-        t => return Err(BasicParseError::UnexpectedToken(t))
+        t => {
+            arguments.mark_error(Some(ErrorComponent::Token(t)));
+            return Err(BasicParseError::UnexpectedToken)
+        }
     };
     let saturation = saturation.max(0.).min(1.);
 
